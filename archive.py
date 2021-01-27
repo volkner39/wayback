@@ -3,59 +3,86 @@ import requests
 import datetime
 import json
 import sys
+import time
+
+# Problems
+# - what if doesnt archive properly? -> put link in a log file
+# - sleep() for how long? -> 5min every 30 links
+
 
 def check_time(url):
 
 	# get todays date
 	x = datetime.datetime.now()
 	
-	print(x.year, x.month, x.day)
+	#print("Today's Date: " + str(x.year) + '-' + str(x.month) + '-' + str(x.day))
 
-	# first check if the page was archived today
-	with urllib.request.urlopen(url) as response:
-		#html = response.read()
-		response_dict = json.loads(response.read())
+	try:
+		with urllib.request.urlopen(url) as response:
+			response_dict = json.loads(response.read())
 		
-		# get the closest archived time for page
-		print(response_dict)
+			# find last page archive date
+			if (response_dict.get("archived_snapshots") == {}):
+				print("Wayback hasn't archived this yet! or theres a problem...\n")
+				return True
 		
-		if (response_dict.get("archived_snapshots") == {}):
-			print("Wayback hasn't archived this yet!")
-			return True
+			val1 = response_dict.get("archived_snapshots")
+			val2 = val1.get("closest")
+			time = val2.get("timestamp")
 		
-		val1 = response_dict.get("archived_snapshots")
-		val2 = val1.get("closest")
-		time = val2.get("timestamp")
+			print("Latest save:  " + val2.get("timestamp") + '   -   ' + val2.get("url") + '\n')
 
-		# check year, month, day
-		if ((str(x.year) == str(time)[:4]) and (str(x.month) == (str(time)[4:6]).lstrip('0')) and (str(x.day) == (str(time)[6:8]).lstrip('0'))):
-			print("same day, don't archive")
 			return False
-		else:
-			print("not same day, archive it")
-			return True
-		
+			'''
+			# check if page was archived today
+			if ((str(x.year) == str(time)[:4]) and (str(x.month) == (str(time)[4:6]).lstrip('0')) and (str(x.day) == (str(time)[6:8]).lstrip('0'))):
+				print("Same day, don't archive\n")
+				return False
+			else:
+				print("Not same day, archive it\n")
+				return True
+			'''
+	except:
+		print("Error: ", sys.exc_info()[0])
+		return True
+
 
 def archive(target_url):
-	# if it hasn't, let's archive it...
-	save_url = "https://archive.is/submit/"
+
 	my_url = "https://web.archive.org/save/{}".format(target_url)
 
-	# send archive request to archive.is
-	response = requests.get(my_url)
-
-	# print out headers in response
-	for x in response.headers:
-		print(x + ":  " + response.headers.get(x))
-
-
-	# check if page was archived
-	#if response.status_code == 200:
+	headers = {
+		'Accept-Encoding': 'gzip, deflate, sdch',
+		'Accept-Language': 'en-US,en;q=0.8',
+		'Upgrade-Insecure-Requests': '1',
+		'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)  Chrome/56.0.2924.87 Safari/537.36',
+		'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+		'Cache-Control': 'max-age=0',
+		'Connection': 'keep-alive',
+	}
 	
+	data = {
+		'url': target_url
+	}
+
+	# send archive POST request to Internet Archive
+	try:
+		response = requests.post(my_url, headers=headers, data=data)
+		print(response)
+	except:
+		print("Error: ", sys.exc_info()[0])
+
+
 
 if __name__ == "__main__":
+
+	start_time = time.time()
 	
 	flag = sys.argv[1]
+	archived_url = "http://archive.org/wayback/available?url="
+	link_count = 0
+	
+	couldnt_archive = []
 	
 	# if a file of links is given
 	if flag == '-f':
@@ -65,22 +92,42 @@ if __name__ == "__main__":
 		
 		# loop through all links
 		for link in links:
-			archived_url = "http://archive.org/wayback/available?url=" + link
+			print("\nCurrent Link: " + link)
 
-			if(check_time(archived_url)):
-				print("Archiving...")
+			try_count = 0
+			while (check_time(archived_url + link) and try_count <= 2):
+				print("Archiving...\n")
 				archive(link)
+				time.sleep(100)
+				try_count += 1
+			link_count += 1
+			
+			if try_count >= 2:
+				couldnt_archive.append(link)
+			
+			if (link_count % 40 == 0):
+				time.sleep(250)
 		
-				if(~check_time(archived_url)):
-					print("updated")
+		# log urls that couldn't be archived
+		if len(couldnt_archive) > 0:
+			f1 = open("couldnt_archive1.txt", "w")
+		
+			for x in sorted(couldnt_archive):
+				f1.write(x + '\n')
+	
+			f1.close()
+		f.close()
 	
 	# if just a link is given
 	else:
-		archived_url = "http://archive.org/wayback/available?url=" + flag
+		url = sys.argv[1]
+		archived_url = "http://archive.org/wayback/available?url=" + url
 
-		if(check_time(archived_url)):
-			print("Archiving...")
-			archive(flag)
+		try_count = 0
+		while (check_time(archived_url + url) and try_count <= 2):
+			print("Archiving...\n")
+			archive(url)
+			time.sleep(100)
+			try_count += 1
 
-			if(~check_time(archived_url)):
-				print("updated")
+	print("--- %s seconds ---" % (time.time() - start_time))
