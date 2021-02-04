@@ -5,17 +5,10 @@ import json
 import sys
 import time
 
-# Problems
-# - what if doesnt archive properly? -> put link in a log file
-# - sleep() for how long? -> 5min every 30 links
-
-
 def check_time(url):
 
 	# get todays date
 	x = datetime.datetime.now()
-	
-	#print("Today's Date: " + str(x.year) + '-' + str(x.month) + '-' + str(x.day))
 
 	try:
 		with urllib.request.urlopen(url) as response:
@@ -33,7 +26,9 @@ def check_time(url):
 			print("Latest save:  " + val2.get("timestamp") + '   -   ' + val2.get("url") + '\n')
 
 			return False
+			
 			'''
+			# uncomment if you want pages to be saved regardless if theres a past copy
 			# check if page was archived today
 			if ((str(x.year) == str(time)[:4]) and (str(x.month) == (str(time)[4:6]).lstrip('0')) and (str(x.day) == (str(time)[6:8]).lstrip('0'))):
 				print("Same day, don't archive\n")
@@ -42,10 +37,18 @@ def check_time(url):
 				print("Not same day, archive it\n")
 				return True
 			'''
-	except:
-		print("Error: ", sys.exc_info()[0])
-		return True
 
+	except urllib.error.HTTPError as e:
+		print("Error: ", str(e.code))
+		return True
+	except urllib.error.URLError as e:
+		print("Error: ", str(e.reason))
+	except httplib.HTTPException as e:
+		print("Error: HTTPException")
+	except Exception:
+		import traceback
+		print(traceback.format_exc())
+		
 
 def archive(target_url):
 
@@ -108,14 +111,14 @@ if __name__ == "__main__":
 			if (link_count % 40 == 0):
 				time.sleep(250)
 		
-		# log urls that couldn't be archived
+		# log urls that couldn't be archived at the end
 		if len(couldnt_archive) > 0:
-			f1 = open("couldnt_archive1.txt", "w")
-		
-			for x in sorted(couldnt_archive):
-				f1.write(x + '\n')
-	
-			f1.close()
+			folder = os.path.dirname(os.path.abspath(__file__))
+			file1 = os.path.join(folder, 'couldnt_archive_' + urlsplit(url).netloc + '.txt')
+			with open(file1, "w+") as f1:
+				for x in sorted(couldnt_archive):
+					f1.write(x + '\n')
+				f1.close()
 		f.close()
 	
 	# if just a link is given
