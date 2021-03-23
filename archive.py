@@ -11,14 +11,35 @@ import re
 # - sleep() for how long? -> 5min every 30 links
 
 
-def check_time(original_url, wayback_url, memento_url):
+def check_time(original_url, check_if_url, wayback_url, memento_url):
+
+	headers = {
+		'Accept-Encoding': 'gzip, deflate, sdch',
+		'Accept-Language': 'en-US,en;q=0.8',
+		'Upgrade-Insecure-Requests': '1',
+		'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)  Chrome/56.0.2924.87 Safari/537.36',
+		'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+		'Cache-Control': 'max-age=0',
+		'Connection': 'keep-alive',
+	}
+
 
 	# get todays date
 	x = datetime.datetime.now()
 
 	#print("Today's Date: " + str(x.year) + '-' + str(x.month) + '-' + str(x.day))
 
-	# Check Memento API first
+	# Check if this page exists on the web using Wayback
+	res0 = requests.post((check_if_url + original_url).encode('utf-8'), headers=headers)
+	print(check_if_url + original_url)
+	#print(res0.text)
+	print(re.search("This page is not available on the web", res0.text))
+	if (re.search("This page is not available on the web", res0.text)):
+		print("This page is not available on the web")
+		return False
+
+
+	# Check Memento API
 	res = requests.get(memento_url + original_url, allow_redirects=False)
 	try:
 		res_dict = json.loads(res.text)
@@ -32,10 +53,13 @@ def check_time(original_url, wayback_url, memento_url):
 	except:
 		print("Error: ", sys.exc_info()[0])
 
+
+	# Check Wayback Availability API
 	try:
 		with urllib.request.urlopen(wayback_url) as response:
 			response_dict = json.loads(response.read())
 
+			print(response_dict)
 			# find last page archive date
 			if (response_dict.get("archived_snapshots") == {}):
 				print("Wayback hasn't archived this yet! or theres a problem...\n")
@@ -82,6 +106,7 @@ def archive(target_url):
 
 	# send archive POST request to Internet Archive
 	try:
+
 		response = requests.post(my_url, headers=headers, data=data)
 		cond1 = re.search("This URL has been already captured", response.text)
 		cond2 = re.search("The same snapshot had been made", response.text)
@@ -108,7 +133,8 @@ if __name__ == "__main__":
 	flag = sys.argv[1]
 	archived_url = "http://archive.org/wayback/available?url="
 	memento_url = "http://timetravel.mementoweb.org/api/json/2020/"
-	link_count = 0
+	check_if_url = "http://web.archive.org/web/2/"
+	#link_count = 0
 
 	couldnt_archive = []
 
@@ -117,45 +143,53 @@ if __name__ == "__main__":
 		file = sys.argv[2]
 		f = open(file, "r")
 		links = f.read().splitlines()
+		f.close()
 
 		# loop through all links
 		for link in links:
-			print("\nCurrent Link: " + link)
+			print("\nCurrent Link: ", link)
 
 			try_count = 0
-			while (check_time(link, archived_url + link, memento_url) and try_count <= 2):
-				print("Archiving...\n")
-				if (archive(link)):
-					print("This URL has already been captured")
-					break
-				#time.sleep(30)
-				try_count += 1
-			link_count += 1
+			try:
+				while (check_time(link, check_if_url, archived_url + link, memento_url) and try_count <= 2):
+					print("Archiving...\n")
+					if (archive(link)):
+						print("This URL has already been captured")
+						break
+					time.sleep(50)
+					try_count += 1
+				#link_count += 1
 
-			if try_count >= 2:
-				couldnt_archive.append(link)
+				if try_count >= 2:
+					couldnt_archive.append(link)
 
-			#if (link_count % 40 == 0):
-				#time.sleep(250)
+				#if (link_count % 40 == 0):
+					#time.sleep(250)
+
+			except:
+				print("Error: ", sys.exec_info()[0])
 
 		# log urls that couldn't be archived
+		site_name = (sorted(couldnt_archive)[0]).split(".")[1]
+
+
 		if len(couldnt_archive) > 0:
-			f1 = open("couldnt_archive1.txt", "w+")
+			f1 = open("no_" + site_name, "w+")
 
 			for x in sorted(couldnt_archive):
 				f1.write(x + '\n')
 
 			f1.close()
-		f.close()
 
 	# if just a link is given
 	else:
 		url = sys.argv[1]
 		archived_url = "http://archive.org/wayback/available?url=" + url
 		memento_url = "http://timetravel.mementoweb.org/api/json/2020/"
+		check_if_url = "https://web.archive.org/web/2/"
 
 		try_count = 0
-		while (check_time(url, archived_url + url, memento_url) and try_count <= 2):
+		while (check_time(url, check_if_url, archived_url + url, memento_url) and try_count <= 2):
 			print("Archiving...\n")
 			archive(url)
 			#time.sleep(100)
